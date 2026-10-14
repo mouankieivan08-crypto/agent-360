@@ -1,0 +1,5 @@
+node_modules/
+.env
+# Données locales : CRM SQLite et session WhatsApp (ne jamais committer)
+data/
+auth/
