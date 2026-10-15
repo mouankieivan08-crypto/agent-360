@@ -48,6 +48,8 @@ export class WhatsAppTransport implements Transport {
   /** Copie des messages envoyés, demandée par WhatsApp en cas de renvoi. */
   private readonly sentCache = new Map<string, proto.IMessage>();
   private pairingRequested = false;
+  /** Bascule manuelle vers le QR code (taper « qr » dans le terminal) si le code échoue. */
+  private useQr = false;
   private retries = 0;
   /** Session WhatsApp, gardée en mémoire entre les reconnexions (évite de relire un fichier en cours d'écriture). */
   private auth: Awaited<ReturnType<typeof useMultiFileAuthState>> | null = null;
@@ -61,6 +63,17 @@ export class WhatsAppTransport implements Transport {
 
   async start(onMessage: (m: InboundMessage) => void): Promise<void> {
     this.onMessage = onMessage;
+    if (process.stdin.isTTY) {
+      process.stdin.setEncoding("utf8");
+      process.stdin.on("data", (data) => {
+        const paired = !!this.auth?.state.creds.account;
+        if (/^\s*qr\s*$/i.test(String(data)) && !paired && this.cfg.pairingNumber && !this.useQr) {
+          this.useQr = true;
+          console.log("Passage au QR code…");
+          this.sock?.end(undefined);
+        }
+      });
+    }
     await this.connect();
   }
 
@@ -92,6 +105,7 @@ Sur le téléphone du numéro +${this.cfg.pairingNumber} :
 WhatsApp > Réglages (ou ⋮) > Appareils connectés > Connecter un appareil
 > en bas : « Connecter avec un numéro de téléphone » > tape ce code.
 Tu as quelques minutes. S'il expire, un NOUVEAU code s'affichera ici tout seul.
+Si WhatsApp affiche « Impossible de connecter » : tape qr puis Entrée ici pour utiliser un QR code.
 `);
   }
 
@@ -116,7 +130,7 @@ Tu as quelques minutes. S'il expire, un NOUVEAU code s'affichera ici tout seul.
       markOnlineOnConnect: false,
       syncFullHistory: false,
       // Connexion par code : laisse plus de temps pour le saisir avant que WhatsApp ne coupe.
-      qrTimeout: this.cfg.pairingNumber ? 60_000 : undefined,
+      qrTimeout: this.cfg.pairingNumber && !this.useQr ? 60_000 : undefined,
       getMessage: async (key) => (key.id ? this.sentCache.get(key.id) : undefined),
     });
     this.sock = sock;
@@ -125,7 +139,7 @@ Tu as quelques minutes. S'il expire, un NOUVEAU code s'affichera ici tout seul.
 
     sock.ev.on("connection.update", async (u) => {
       if (u.qr) {
-        if (this.cfg.pairingNumber && !state.creds.account && !this.pairingRequested) {
+        if (this.cfg.pairingNumber && !this.useQr && !state.creds.account && !this.pairingRequested) {
           this.pairingRequested = true;
           try {
             this.printPairingCode(await sock.requestPairingCode(this.cfg.pairingNumber));
@@ -133,8 +147,8 @@ Tu as quelques minutes. S'il expire, un NOUVEAU code s'affichera ici tout seul.
             console.error("Impossible d'obtenir le code, scanne plutôt ce QR code :", e instanceof Error ? e.message : e);
             qrcode.generate(u.qr, { small: true });
           }
-        } else if (!this.cfg.pairingNumber) {
-          console.log("\n📱 Scanne ce QR code : WhatsApp > Appareils connectés > Connecter un appareil\n");
+        } else if (!this.cfg.pairingNumber || this.useQr) {
+          console.log("\n📱 Scanne ce QR code avec le téléphone : WhatsApp > Appareils connectés > Connecter un appareil\n");
           qrcode.generate(u.qr, { small: true });
         }
       }
