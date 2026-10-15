@@ -65,13 +65,28 @@ Ensuite, parle à l'agent dans la discussion **« Moi (Vous) »** (le chat avec 
 
 ### 3. Fais-le tourner 24 h/24
 
-Les rituels, rappels et envois ne marchent que si l'agent tourne. Le plus simple : un petit VPS (≈ 5 €/mois) ou un vieux PC toujours allumé.
+Les rituels, rappels et envois ne marchent que si l'agent tourne en continu.
 
-```bash
-npm install -g pm2
-pm2 start npm --name agent-360 -- start
-pm2 save && pm2 startup
-```
+> **Pourquoi pas Vercel ?** Vercel exécute des fonctions courtes qui s'arrêtent après chaque requête, sans disque permanent. Or l'agent garde une connexion WhatsApp ouverte en permanence et stocke son CRM et sa session sur disque : sur Vercel, il serait déconnecté en quelques secondes. Railway donne la même expérience que Vercel (tu connectes GitHub, chaque push redéploie), mais pour les programmes qui tournent 24 h/24.
+
+**Option recommandée : Railway** (plan Hobby, environ 5 $/mois)
+
+1. Crée un compte sur https://railway.com et connecte ton GitHub.
+2. *New Project → Deploy from GitHub repo* → choisis le dépôt de l'agent. Railway détecte le `Dockerfile` tout seul. (Si l'agent est encore dans le dépôt mowbara, mets `agent-360` comme *Root Directory* dans *Settings*.)
+3. Dans le service : *Settings → Volumes → Add Volume*, chemin de montage **`/data`**. Ton CRM et ta session WhatsApp y sont conservés entre deux redéploiements.
+4. Onglet *Variables* : ajoute au minimum `ANTHROPIC_API_KEY`, `OWNER_NAME`, et **`WA_PAIRING_NUMBER`** (le numéro WhatsApp que l'agent va utiliser, ex. `242061234567`). Ajoute les autres réglages de `.env.example` si besoin.
+5. Déploie, puis ouvre l'onglet *Deploy Logs* : un **code d'appairage** à 8 caractères s'affiche. Sur le téléphone : WhatsApp → Appareils connectés → Connecter un appareil → « Connecter avec un numéro de téléphone », et saisis le code.
+6. C'est tout : l'agent t'écrit son message de bienvenue sur WhatsApp.
+
+**Autres options**
+
+- Un VPS (Hetzner, Contabo… ≈ 5 €/mois) : `docker build -t agent-360 . && docker run -d --restart unless-stopped -v agent360:/data --env-file .env agent-360`, ou sans Docker :
+  ```bash
+  npm install -g pm2
+  pm2 start npm --name agent-360 -- start
+  pm2 save && pm2 startup
+  ```
+- Ton PC : `npm start` marche, mais l'agent s'arrête quand le PC s'éteint ou se met en veille.
 
 ## Comment lui parler (exemples)
 
