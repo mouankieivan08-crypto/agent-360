@@ -32,7 +32,7 @@ rem --- 2. Dependances (une seule fois)
 :deps
 if exist node_modules\tsx goto config
 echo Installation des composants, patiente une minute...
-call npm ci --omit=dev --no-audit --no-fund
+call npm ci --omit=dev --no-audit --no-fund --ignore-scripts
 if errorlevel 1 goto depsfail
 goto config
 

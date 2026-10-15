@@ -42,15 +42,16 @@ L'agent tourne sur **ton ordinateur** : pas d'hébergement à payer. Seul coût 
 2. Télécharge ce dépôt : sur GitHub, bouton vert *Code* → *Download ZIP*, puis décompresse-le.
 
 **Lancer l'agent :**
+- **Mac** : ouvre le *Terminal* (Cmd + Espace, tape « Terminal », Entrée). Tape `bash` suivi d'un espace, glisse le fichier **`demarrer.sh`** du dossier dans la fenêtre, puis appuie sur Entrée. Tu peux aussi double-cliquer sur **`DEMARRER.command`**. La première fois, si macOS le bloque, va dans *Réglages Système* → *Confidentialité et sécurité* → *Ouvrir quand même*.
 - **Windows** : double-clic sur **`DEMARRER.bat`**.
-- **Mac / Linux / Android (Termux)** : `./demarrer.sh`.
+- **Linux / Android (Termux)** : `bash demarrer.sh`.
 
-Au premier lancement, tout s'installe tout seul : Node.js (sous Windows), puis les composants. Ensuite, l'assistant te pose 5 questions : ta clé, ton prénom, le modèle, le numéro WhatsApp de l'agent, et les notes vocales (optionnel). Il vérifie ta clé tout de suite.
+Au premier lancement, tout s'installe tout seul : Node.js (sans mot de passe administrateur sur Mac et Linux), puis les composants. Ensuite, l'assistant te pose 5 questions : ta clé, ton prénom, le modèle, le numéro WhatsApp de l'agent, et les notes vocales (optionnel). Il vérifie ta clé tout de suite.
 
 Puis un **code à 8 caractères** s'affiche. Sur le téléphone du numéro de l'agent : WhatsApp → *Appareils connectés* → *Connecter un appareil* → « Connecter avec un numéro de téléphone » → tape le code. L'agent t'envoie son message de bienvenue. Les fois suivantes, le double-clic démarre directement l'agent.
 
 **À savoir :**
-- L'agent fonctionne tant que la fenêtre est ouverte et le PC allumé. Désactive la mise en veille quand le PC est branché.
+- L'agent fonctionne tant que la fenêtre est ouverte et l'ordinateur allumé. Sur Mac, il empêche lui-même la mise en veille. Garde le Mac branché et l'écran ouvert. Sur PC, désactive la mise en veille quand il est branché.
 - S'il plante, il redémarre tout seul. Pour l'arrêter, ferme la fenêtre.
 - Pour refaire la configuration : `npm run setup`, ou supprime le fichier `.env`.
 - Pour tester sans WhatsApp : `npm run simulate`.

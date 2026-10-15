@@ -3,3 +3,5 @@ node_modules/
 # Données locales : CRM SQLite et session WhatsApp (ne jamais committer)
 data/
 auth/
+# Node.js téléchargé par demarrer.sh
+.node/
