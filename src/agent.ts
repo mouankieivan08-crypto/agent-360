@@ -16,10 +16,24 @@ export interface MessagesApi {
 }
 
 const MAX_STEPS = 15;
+
+/** Explication en français, pour le propriétaire, d'une erreur de l'API Claude. */
+export function explainError(e: unknown): string {
+  if (e instanceof Anthropic.AuthenticationError) {
+    return "ma clé Claude est refusée. Relance l'installation (npm run setup) avec une clé valide.";
+  }
+  if (e instanceof Anthropic.APIError && /credit|billing|balance/i.test(e.message)) {
+    return "ton compte Claude n'a pas de crédit. Ajoute du crédit sur console.anthropic.com > Billing, puis réécris-moi.";
+  }
+  if (e instanceof Anthropic.RateLimitError) return "je suis momentanément saturé (limite de l'API). Réessaie dans une minute.";
+  if (e instanceof Anthropic.APIConnectionError) return "je n'arrive pas à joindre Claude. Vérifie la connexion internet de l'ordinateur.";
+  return "un souci technique m'empêche de répondre. Réessaie dans un instant.";
+}
 const SILENT = "RIEN";
 
 export class Agent {
   private queue: Promise<void> = Promise.resolve();
+  private lastFailureNotice = 0;
   private readonly system: string;
   private tools: Anthropic.Beta.BetaToolUnion[];
 
@@ -65,14 +79,16 @@ export class Agent {
     try {
       reply = await this.loop([{ role: "user", content }], ev.type === "message_proprietaire", now);
     } catch (e) {
-      console.error("Erreur agent :", e instanceof Anthropic.APIError ? e.message : e);
-      if (ev.type !== "message_proprietaire") return;
-      reply =
-        e instanceof Anthropic.RateLimitError
-          ? "Je suis momentanément saturé (limite de l'API). Réessaie dans une minute."
-          : e instanceof Anthropic.AuthenticationError
-            ? "Ma clé API Claude est invalide : vérifie ANTHROPIC_API_KEY dans le fichier .env."
-            : "Petit souci technique de mon côté, je n'ai pas pu traiter ton message. Réessaie dans un instant.";
+      const reason = explainError(e);
+      console.error(`❌ Claude ne répond pas : ${e instanceof Error ? e.message : String(e)}`);
+      if (ev.type !== "message_proprietaire") {
+        // Sans Claude, on prévient quand même le propriétaire (au plus une fois par heure).
+        if (Date.now() - this.lastFailureNotice < 3600_000) return;
+        this.lastFailureNotice = Date.now();
+        await this.transport.sendToOwner(`⚠️ Je suis bien connecté à WhatsApp, mais ${reason}`).catch(() => undefined);
+        return;
+      }
+      reply = `⚠️ ${reason.charAt(0).toUpperCase()}${reason.slice(1)}`;
     }
 
     reply = reply.trim();

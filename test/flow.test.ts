@@ -255,3 +255,25 @@ test("agent : si le modèle refuse la recherche web, il continue sans elle", asy
   assert.equal(calls.length, 3);
   assert.equal(calls[0]!.fallbacks, undefined, "pas de fallbacks avec Haiku");
 });
+
+test("agent : si Claude est inaccessible (ex. sans crédit), le propriétaire est prévenu sur WhatsApp", async () => {
+  const store = new Store(":memory:");
+  const transport = new FakeTransport();
+  const api: MessagesApi = {
+    async create() {
+      throw new AnthropicSdk.BadRequestError(
+        400,
+        { error: { message: "Your credit balance is too low to access the Anthropic API." } },
+        "Your credit balance is too low to access the Anthropic API.",
+        new Headers(),
+      );
+    },
+  };
+  const agent = new Agent(store, cfg, transport, api);
+  await agent.handle({ type: "alerte", text: "Premier démarrage" });
+  await agent.handle({ type: "brief_du_matin" }); // pas de 2e alerte dans l'heure
+  await agent.handle({ type: "message_proprietaire", text: "Salut" });
+  assert.equal(transport.toOwner.length, 2);
+  assert.match(transport.toOwner[0]!, /bien connecté à WhatsApp.*pas de crédit/);
+  assert.match(transport.toOwner[1]!, /^⚠️ Ton compte Claude n'a pas de crédit/);
+});

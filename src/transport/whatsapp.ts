@@ -19,6 +19,7 @@ import makeWASocket, {
   type WASocket,
   type proto,
 } from "@whiskeysockets/baileys";
+import { rm } from "node:fs/promises";
 import pino from "pino";
 import qrcode from "qrcode-terminal";
 import type { Config } from "../config.ts";
@@ -47,6 +48,8 @@ export class WhatsAppTransport implements Transport {
   private readonly sentCache = new Map<string, proto.IMessage>();
   private pairingRequested = false;
   private retries = 0;
+  /** Session WhatsApp, gardée en mémoire entre les reconnexions (évite de relire un fichier en cours d'écriture). */
+  private auth: Awaited<ReturnType<typeof useMultiFileAuthState>> | null = null;
   private newChatQuota: { total?: number; used?: number } = {};
 
   constructor(private readonly cfg: Config) {}
@@ -60,10 +63,40 @@ export class WhatsAppTransport implements Transport {
     await this.connect();
   }
 
+  private async loadAuth(): Promise<Awaited<ReturnType<typeof useMultiFileAuthState>>> {
+    if (this.auth) return this.auth;
+    let auth = await useMultiFileAuthState(this.cfg.authDir);
+    // Une connexion par code jamais terminée laisse une identité incomplète qui bloquerait toutes les suivantes.
+    if (auth.state.creds.me && !auth.state.creds.account) {
+      console.log("Ancienne tentative de connexion inachevée effacée, on recommence proprement.");
+      await rm(this.cfg.authDir, { recursive: true, force: true });
+      auth = await useMultiFileAuthState(this.cfg.authDir);
+    }
+    this.auth = auth;
+    return auth;
+  }
+
+  private async resetAuth(): Promise<void> {
+    this.auth = null;
+    await rm(this.cfg.authDir, { recursive: true, force: true });
+  }
+
+  private printPairingCode(code: string): void {
+    const pretty = code.length === 8 ? `${code.slice(0, 4)}-${code.slice(4)}` : code;
+    console.log(`
+==============================================
+     CODE WHATSAPP :   ${pretty}
+==============================================
+Sur le téléphone du numéro +${this.cfg.pairingNumber} :
+WhatsApp > Réglages (ou ⋮) > Appareils connectés > Connecter un appareil
+> en bas : « Connecter avec un numéro de téléphone » > tape ce code.
+Tu as quelques minutes. S'il expire, un NOUVEAU code s'affichera ici tout seul.
+`);
+  }
+
   private async connect(): Promise<void> {
-    // Un code d'appairage expire : chaque nouvelle connexion en redemande un.
     this.pairingRequested = false;
-    const { state, saveCreds } = await useMultiFileAuthState(this.cfg.authDir);
+    const { state, saveCreds } = await this.loadAuth();
     let version: [number, number, number] | undefined;
     try {
       version = (await fetchLatestBaileysVersion()).version;
@@ -79,6 +112,8 @@ export class WhatsAppTransport implements Transport {
       // Important : garde les notifications sur ton téléphone.
       markOnlineOnConnect: false,
       syncFullHistory: false,
+      // Connexion par code : laisse plus de temps pour le saisir avant que WhatsApp ne coupe.
+      qrTimeout: this.cfg.pairingNumber ? 60_000 : undefined,
       getMessage: async (key) => (key.id ? this.sentCache.get(key.id) : undefined),
     });
     this.sock = sock;
@@ -87,15 +122,12 @@ export class WhatsAppTransport implements Transport {
 
     sock.ev.on("connection.update", async (u) => {
       if (u.qr) {
-        if (this.cfg.pairingNumber && !state.creds.registered && !this.pairingRequested) {
+        if (this.cfg.pairingNumber && !state.creds.account && !this.pairingRequested) {
           this.pairingRequested = true;
           try {
-            const code = await sock.requestPairingCode(this.cfg.pairingNumber);
-            console.log(
-              `\n🔗 Code d'appairage : ${code}\nWhatsApp > Appareils connectés > Connecter un appareil > « Connecter avec un numéro de téléphone ».\n`,
-            );
+            this.printPairingCode(await sock.requestPairingCode(this.cfg.pairingNumber));
           } catch (e) {
-            console.error("Impossible d'obtenir le code d'appairage, scanne le QR code :", e);
+            console.error("Impossible d'obtenir le code, scanne plutôt ce QR code :", e instanceof Error ? e.message : e);
             qrcode.generate(u.qr, { small: true });
           }
         } else if (!this.cfg.pairingNumber) {
@@ -103,26 +135,35 @@ export class WhatsAppTransport implements Transport {
           qrcode.generate(u.qr, { small: true });
         }
       }
+      if (u.isNewLogin) console.log("✅ Code accepté ! Finalisation de la connexion…");
       if (u.reachoutTimeLock?.isActive) {
         console.warn("⚠️ WhatsApp limite actuellement ce compte pour contacter de nouvelles personnes.");
       }
       if (u.connection === "open") {
         this.ready = true;
         this.retries = 0;
-        console.log(`✅ WhatsApp connecté (${jidNormalizedUser(sock.user?.id)})`);
+        const owner = this.cfg.ownerNumbers[0];
+        console.log(`\n✅ WhatsApp connecté (+${jidDecode(sock.user?.id)?.user ?? "?"}).`);
+        console.log(
+          owner
+            ? `   Écris à ton agent depuis ton numéro +${owner}.\n`
+            : "   Parle à ton agent dans la discussion « Moi (Vous) » : dans WhatsApp, cherche ton propre nom.\n",
+        );
       }
       if (u.connection === "close") {
         this.ready = false;
         const code = (u.lastDisconnect?.error as { output?: { statusCode?: number } } | undefined)?.output?.statusCode;
+        const paired = !!state.creds.account;
         if (code === DisconnectReason.loggedOut) {
-          console.error(
-            `❌ Session WhatsApp déconnectée. Supprime le dossier « ${this.cfg.authDir} » puis relance pour rescanner.`,
-          );
-          return;
+          console.log("WhatsApp a déconnecté l'agent (appareil retiré ?). Un nouveau code va s'afficher.");
+          await this.resetAuth();
+        } else if (!paired && code !== DisconnectReason.restartRequired) {
+          if (this.pairingRequested) console.log("Le code a expiré sans être saisi. Nouveau code dans quelques secondes…");
+          await this.resetAuth();
         }
         // Reconnexion progressive : 3 s, 6 s, 12 s... jusqu'à 2 min (coupure réseau, etc.).
         const delay = code === DisconnectReason.restartRequired ? 0 : Math.min(120_000, 3000 * 2 ** this.retries++);
-        if (this.retries === 4) console.warn("WhatsApp injoignable, nouvelles tentatives en cours…");
+        if (this.retries === 4) console.warn("WhatsApp injoignable (internet ?), nouvelles tentatives en cours…");
         setTimeout(() => {
           this.connect().catch((e) => console.error("Reconnexion WhatsApp échouée :", e));
         }, delay);
