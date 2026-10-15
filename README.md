@@ -72,7 +72,7 @@ Les rituels, rappels et envois ne marchent que si l'agent tourne en continu.
 **Option recommandée : Railway** (plan Hobby, environ 5 $/mois)
 
 1. Crée un compte sur https://railway.com et connecte ton GitHub.
-2. *New Project → Deploy from GitHub repo* → choisis le dépôt de l'agent. Railway détecte le `Dockerfile` tout seul. (Si l'agent est encore dans le dépôt mowbara, mets `agent-360` comme *Root Directory* dans *Settings*.)
+2. *New Project → Deploy from GitHub repo* → choisis le dépôt de l'agent. Railway détecte le `Dockerfile` tout seul.
 3. Dans le service : *Settings → Volumes → Add Volume*, chemin de montage **`/data`**. Ton CRM et ta session WhatsApp y sont conservés entre deux redéploiements.
 4. Onglet *Variables* : ajoute au minimum `ANTHROPIC_API_KEY`, `OWNER_NAME`, et **`WA_PAIRING_NUMBER`** (le numéro WhatsApp que l'agent va utiliser, ex. `242061234567`). Ajoute les autres réglages de `.env.example` si besoin.
 5. Déploie, puis ouvre l'onglet *Deploy Logs* : un **code d'appairage** à 8 caractères s'affiche. Sur le téléphone : WhatsApp → Appareils connectés → Connecter un appareil → « Connecter avec un numéro de téléphone », et saisis le code.
