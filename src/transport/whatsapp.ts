@@ -61,6 +61,8 @@ export class WhatsAppTransport implements Transport {
   }
 
   private async connect(): Promise<void> {
+    // Un code d'appairage expire : chaque nouvelle connexion en redemande un.
+    this.pairingRequested = false;
     const { state, saveCreds } = await useMultiFileAuthState(this.cfg.authDir);
     let version: [number, number, number] | undefined;
     try {
