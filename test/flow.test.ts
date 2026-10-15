@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { mock, test } from "node:test";
+import AnthropicSdk from "@anthropic-ai/sdk";
 import type Anthropic from "@anthropic-ai/sdk";
 import { Agent, type MessagesApi } from "../src/agent.ts";
 import { config } from "../src/config.ts";
@@ -222,4 +223,35 @@ test("planificateur : rituels une seule fois par jour, sans rattrapage tardif", 
     return /type="(\w+)"/.exec(blocks.at(-1)?.text ?? "")?.[1];
   });
   assert.deepEqual(events, ["brief_du_matin", "checkin_du_soir", "alerte"]);
+});
+
+test("agent : si le modèle refuse la recherche web, il continue sans elle", async () => {
+  const store = new Store(":memory:");
+  const transport = new FakeTransport();
+  const calls: Params[] = [];
+  const api: MessagesApi = {
+    async create(params) {
+      calls.push(structuredClone(params));
+      if (params.tools?.some((t) => "type" in t && String(t.type).startsWith("web_search"))) {
+        throw new AnthropicSdk.BadRequestError(400, { error: { message: "web_search is not supported" } }, "web_search is not supported on this model", new Headers());
+      }
+      return {
+        id: "msg_1",
+        type: "message",
+        role: "assistant",
+        model: params.model,
+        content: [text("Salut !")],
+        stop_reason: "end_turn",
+        stop_sequence: null,
+        usage: { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: 0 },
+      } as unknown as Anthropic.Beta.BetaMessage;
+    },
+  };
+  const agent = new Agent(store, { ...cfg, model: "claude-haiku-5-5", webSearch: true }, transport, api);
+  await agent.handle({ type: "message_proprietaire", text: "Salut" });
+  await agent.handle({ type: "message_proprietaire", text: "Ça va ?" });
+  assert.deepEqual(transport.toOwner, ["Salut !", "Salut !"]);
+  // 1er message : essai avec recherche web, puis sans ; ensuite plus jamais avec.
+  assert.equal(calls.length, 3);
+  assert.equal(calls[0]!.fallbacks, undefined, "pas de fallbacks avec Haiku");
 });

@@ -33,60 +33,35 @@ Agent  : 🔥 Clinique Sainte-Marie a répondu : « C'est combien ? ». Prospect
 | Coaching | Brief du matin, check-in du soir, revue hebdo, rappels de RDV et suivi après RDV, conseils stratégiques chiffrés |
 | Mémoire | Il retient tes offres, tes prix, tes clients, tes décisions |
 
-## Installation (15 minutes)
+## Démarrage gratuit, en un double-clic
 
-Prérequis : **Node.js 22.13 ou plus récent** et une **clé API Claude** (https://console.anthropic.com → API Keys, avec quelques dollars de crédit).
+L'agent tourne sur **ton ordinateur** : pas d'hébergement à payer. Seul coût : l'IA Claude, à l'usage. Avec le modèle économique (proposé par défaut), compte environ 1 $ par mois.
 
-```bash
-cd agent-360
-npm install
-cp .env.example .env      # puis ouvre .env et colle ta clé ANTHROPIC_API_KEY
-```
+**Avant de commencer** (5 minutes) :
+1. Crée ta clé Claude sur https://console.anthropic.com : *API Keys* → *Create Key*. Ajoute un petit crédit dans *Billing* : avec le modèle économique, il dure des mois.
+2. Télécharge ce dépôt : sur GitHub, bouton vert *Code* → *Download ZIP*, puis décompresse-le.
 
-### 1. Teste d'abord dans la console (sans WhatsApp)
+**Lancer l'agent :**
+- **Windows** : double-clic sur **`DEMARRER.bat`**.
+- **Mac / Linux / Android (Termux)** : `./demarrer.sh`.
 
-```bash
-npm run simulate
-```
+Au premier lancement, tout s'installe tout seul : Node.js (sous Windows), puis les composants. Ensuite, l'assistant te pose 5 questions : ta clé, ton prénom, le modèle, le numéro WhatsApp de l'agent, et les notes vocales (optionnel). Il vérifie ta clé tout de suite.
 
-Écris comme si tu étais sur WhatsApp. Pour simuler un prospect qui répond : `/prospect 242061234567 Oui c'est combien ?`. Le simulateur utilise une base séparée (`data/simulation.db`) : tes essais ne polluent pas ton vrai CRM.
+Puis un **code à 8 caractères** s'affiche. Sur le téléphone du numéro de l'agent : WhatsApp → *Appareils connectés* → *Connecter un appareil* → « Connecter avec un numéro de téléphone » → tape le code. L'agent t'envoie son message de bienvenue. Les fois suivantes, le double-clic démarre directement l'agent.
 
-### 2. Branche WhatsApp
+**À savoir :**
+- L'agent fonctionne tant que la fenêtre est ouverte et le PC allumé. Désactive la mise en veille quand le PC est branché.
+- S'il plante, il redémarre tout seul. Pour l'arrêter, ferme la fenêtre.
+- Pour refaire la configuration : `npm run setup`, ou supprime le fichier `.env`.
+- Pour tester sans WhatsApp : `npm run simulate`.
 
-```bash
-npm start
-```
+### Plus tard : le faire tourner 24 h/24 sans ton PC
 
-Un QR code s'affiche : sur ton téléphone, **WhatsApp → Appareils connectés → Connecter un appareil**, puis scanne. (Sur un serveur sans écran : mets ton numéro dans `WA_PAIRING_NUMBER`, tu recevras un code à saisir via « Connecter avec un numéro de téléphone ».)
+> **Pourquoi pas Vercel ?** Vercel exécute des fonctions courtes, sans connexion permanente ni disque. L'agent, lui, garde WhatsApp connecté en continu.
 
-Ensuite, parle à l'agent dans la discussion **« Moi (Vous) »** (le chat avec toi-même). Il se présente au premier démarrage.
-
-**Configuration recommandée** : un **2e numéro dédié** (WhatsApp Business) pour l'agent et la prospection. Mets ton numéro perso dans `OWNER_NUMBERS` et tu lui écris comme à un contact normal. Si ce numéro est un jour restreint par WhatsApp, ton numéro perso n'est pas touché.
-
-### 3. Fais-le tourner 24 h/24
-
-Les rituels, rappels et envois ne marchent que si l'agent tourne en continu.
-
-> **Pourquoi pas Vercel ?** Vercel exécute des fonctions courtes qui s'arrêtent après chaque requête, sans disque permanent. Or l'agent garde une connexion WhatsApp ouverte en permanence et stocke son CRM et sa session sur disque : sur Vercel, il serait déconnecté en quelques secondes. Railway donne la même expérience que Vercel (tu connectes GitHub, chaque push redéploie), mais pour les programmes qui tournent 24 h/24.
-
-**Option recommandée : Railway** (plan Hobby, environ 5 $/mois)
-
-1. Crée un compte sur https://railway.com et connecte ton GitHub.
-2. *New Project → Deploy from GitHub repo* → choisis le dépôt de l'agent. Railway détecte le `Dockerfile` tout seul.
-3. Dans le service : *Settings → Volumes → Add Volume*, chemin de montage **`/data`**. Ton CRM et ta session WhatsApp y sont conservés entre deux redéploiements.
-4. Onglet *Variables* : ajoute au minimum `ANTHROPIC_API_KEY`, `OWNER_NAME`, et **`WA_PAIRING_NUMBER`** (le numéro WhatsApp que l'agent va utiliser, ex. `242061234567`). Ajoute les autres réglages de `.env.example` si besoin.
-5. Déploie, puis ouvre l'onglet *Deploy Logs* : un **code d'appairage** à 8 caractères s'affiche. Sur le téléphone : WhatsApp → Appareils connectés → Connecter un appareil → « Connecter avec un numéro de téléphone », et saisis le code.
-6. C'est tout : l'agent t'écrit son message de bienvenue sur WhatsApp.
-
-**Autres options**
-
-- Un VPS (Hetzner, Contabo… ≈ 5 €/mois) : `docker build -t agent-360 . && docker run -d --restart unless-stopped -v agent360:/data --env-file .env agent-360`, ou sans Docker :
-  ```bash
-  npm install -g pm2
-  pm2 start npm --name agent-360 -- start
-  pm2 save && pm2 startup
-  ```
-- Ton PC : `npm start` marche, mais l'agent s'arrête quand le PC s'éteint ou se met en veille.
+- **Vieux téléphone Android** (gratuit) : installe Termux depuis F-Droid, copie le dossier, puis lance `./demarrer.sh`. Le téléphone reste branché.
+- **Railway** (environ 5 $/mois) : *New Project* → *Deploy from GitHub repo* → ajoute un volume monté sur `/data`, puis les variables `ANTHROPIC_API_KEY`, `OWNER_NAME`, `WA_PAIRING_NUMBER` et `CLAUDE_MODEL`. Le code d'appairage s'affiche dans *Deploy Logs*.
+- **VPS** : `docker build -t agent-360 . && docker run -d --restart unless-stopped -v agent360:/data --env-file .env agent-360`.
 
 ## Comment lui parler (exemples)
 
@@ -112,7 +87,7 @@ Pour de très gros volumes, la voie officielle est l'**API WhatsApp Business Clo
 
 ## Coûts
 
-- **Claude** : avec le modèle par défaut (Opus 5.5) et un usage normal (une trentaine d'échanges par jour), compte grossièrement 15 000 à 30 000 FCFA par mois. C'est une estimation : surveille ta consommation réelle dans la console Anthropic. `CLAUDE_MODEL=claude-sonnet-5-5` divise le coût par deux environ. Les recherches web sont facturées en plus.
+- **Claude** : avec le modèle économique (Haiku 5.5, choisi par défaut à l'installation), environ 1 $ par mois pour une trentaine d'échanges par jour. Le modèle premium (Opus 5.5) est plus fin, mais coûte environ 20 à 40 $ par mois. Ce sont des estimations : surveille ta consommation réelle dans la console Anthropic. Les recherches web sont facturées en plus (environ 1 centime par recherche).
 - **Transcription des vocaux** : Groq propose un accès gratuit (avec limites) suffisant pour un usage perso.
 - **WhatsApp** : gratuit avec ce mode de connexion.
 

@@ -21,7 +21,7 @@ const SILENT = "RIEN";
 export class Agent {
   private queue: Promise<void> = Promise.resolve();
   private readonly system: string;
-  private readonly tools: Anthropic.Beta.BetaToolUnion[];
+  private tools: Anthropic.Beta.BetaToolUnion[];
 
   constructor(
     private readonly store: Store,
@@ -108,7 +108,7 @@ export class Agent {
   private async loop(messages: Anthropic.Beta.BetaMessageParam[], ownerTurn: boolean, now: Date): Promise<string> {
     const useFallback = !this.cfg.model.includes("haiku");
     for (let step = 0; step < MAX_STEPS; step++) {
-      const response = await this.api.create({
+      const request = (): CreateParams => ({
         model: this.cfg.model,
         max_tokens: 16000,
         // Préfixe stable (outils + prompt système) mis en cache ; la suite du tour est mise en cache automatiquement.
@@ -121,6 +121,17 @@ export class Agent {
         // En cas de refus des filtres de sécurité, l'API relance la requête sur un autre modèle.
         ...(useFallback ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const } : {}),
       });
+      let response: Anthropic.Beta.BetaMessage;
+      try {
+        response = await this.api.create(request());
+      } catch (e) {
+        // Si le modèle choisi refuse la recherche web, on continue sans elle plutôt que de tout bloquer.
+        const hasServerTool = this.tools.some((t) => "type" in t && String(t.type).startsWith("web_search"));
+        if (!(e instanceof Anthropic.BadRequestError) || !hasServerTool || !/web_search|tool/i.test(e.message)) throw e;
+        console.warn(`Recherche web indisponible avec ${this.cfg.model}, désactivée : ${e.message}`);
+        this.tools = [...TOOLS];
+        response = await this.api.create(request());
+      }
       const u = response.usage;
       console.log(
         `[claude] ${response.model} stop=${response.stop_reason} in=${u.input_tokens} cache_read=${u.cache_read_input_tokens ?? 0} out=${u.output_tokens}`,

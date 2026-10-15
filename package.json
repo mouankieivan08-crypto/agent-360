@@ -23,6 +23,7 @@
     "start": "node --disable-warning=ExperimentalWarning --import tsx src/index.ts",
     "simulate": "node --disable-warning=ExperimentalWarning --import tsx src/index.ts --simulate",
     "test": "node --disable-warning=ExperimentalWarning --import tsx --test test/*.test.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "setup": "node --disable-warning=ExperimentalWarning --import tsx src/setup.ts"
   }
 }
