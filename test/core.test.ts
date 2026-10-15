@@ -4,6 +4,7 @@ import { config } from "../src/config.ts";
 import { Store } from "../src/db.ts";
 import { isOptOut, normalizePhone, renderTemplate, splitForWhatsApp } from "../src/text.ts";
 import { localDay, parseLocal } from "../src/time.ts";
+import { buildContext } from "../src/prompt.ts";
 import { runTool, type ToolContext } from "../src/tools.ts";
 import { FakeTransport } from "./helpers.ts";
 
@@ -164,4 +165,24 @@ test("rappels : refus des dates passées, enregistrement des dates futures", asy
   };
   assert.equal(store.upcomingReminders()[0]?.id, r.reminder_id);
   assert.equal(store.dueReminders("2099-01-01T08:00:00.000Z").length, 1);
+});
+
+test("discipline financière : sorties d'argent et réserve", async () => {
+  const store = new Store(":memory:");
+  store.setGoal({ label: "5M", amount: 5_000_000, start_day: "2026-01-01", deadline: "2026-12-31" });
+  store.addPayment({ client_name: "Projets 2026", amount: 1_000_000, kind: "one_shot", paid_on: "2026-06-01" });
+  const r = (await runTool("record_expense", { amount: 700_000, category: "perso", spent_on: "2026-06-15" }, ctx(store))) as {
+    reserve: number;
+  };
+  assert.equal(r.reserve, 300_000);
+  await runTool("record_expense", { amount: 100_000, category: "reinvestissement", spent_on: "2026-07-01" }, ctx(store));
+  await assert.rejects(runTool("record_expense", { amount: 5_000, category: "fete" }, ctx(store)), /Catégorie/);
+  assert.deepEqual(store.expensesBetween("2026-01-01", "2026-12-31"), {
+    reinvestissement: 100_000,
+    charges: 0,
+    salaire: 0,
+    perso: 700_000,
+    total: 800_000,
+  });
+  assert.match(buildContext(store, cfg, new Date("2026-10-15T09:00:00Z")), /réserve théorique 200 000 FCFA/);
 });

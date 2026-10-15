@@ -197,11 +197,22 @@ CREATE TABLE IF NOT EXISTS goals (
   active INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS expenses (
+  id INTEGER PRIMARY KEY,
+  amount INTEGER NOT NULL,
+  category TEXT NOT NULL CHECK (category IN ('reinvestissement', 'charges', 'salaire', 'perso')),
+  spent_on TEXT NOT NULL,
+  note TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS kv (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
 `;
+
+export const EXPENSE_CATEGORIES = ["reinvestissement", "charges", "salaire", "perso"] as const;
+export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number];
 
 const now = () => new Date().toISOString();
 
@@ -312,7 +323,7 @@ export class Store {
       params.push(q, q, q, q);
     }
     const sql = `SELECT * FROM prospects ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
-                 ORDER BY updated_at DESC LIMIT ?`;
+                 ORDER BY updated_at DESC, id DESC LIMIT ?`;
     params.push(f.limit ?? 50);
     return this.all<Prospect>(sql, ...params);
   }
@@ -609,6 +620,33 @@ export class Store {
 
   recentPayments(limit = 10): { client_name: string; amount: number; kind: string; paid_on: string }[] {
     return this.all("SELECT client_name, amount, kind, paid_on FROM payments ORDER BY paid_on DESC, id DESC LIMIT ?", limit);
+  }
+
+  // ---------- Sorties d'argent (discipline financière) ----------
+
+  addExpense(e: { amount: number; category: ExpenseCategory; spent_on: string; note?: string }): number {
+    return this.run(
+      "INSERT INTO expenses (amount, category, spent_on, note, created_at) VALUES (?, ?, ?, ?, ?)",
+      e.amount,
+      e.category,
+      e.spent_on,
+      e.note ?? "",
+      now(),
+    ).id;
+  }
+
+  expensesBetween(fromDay: string, toDay: string): Record<ExpenseCategory, number> & { total: number } {
+    const rows = this.all<{ category: ExpenseCategory; s: number }>(
+      "SELECT category, SUM(amount) AS s FROM expenses WHERE spent_on >= ? AND spent_on <= ? GROUP BY category",
+      fromDay,
+      toDay,
+    );
+    const out = { reinvestissement: 0, charges: 0, salaire: 0, perso: 0, total: 0 };
+    for (const r of rows) {
+      out[r.category] = r.s;
+      out.total += r.s;
+    }
+    return out;
   }
 
   // ---------- Rappels ----------

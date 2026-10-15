@@ -2,7 +2,15 @@
 
 import type Anthropic from "@anthropic-ai/sdk";
 import type { Config } from "./config.ts";
-import { DEAL_STAGES, PROSPECT_STATUSES, type DealStage, type ProspectStatus, type Store } from "./db.ts";
+import {
+  DEAL_STAGES,
+  EXPENSE_CATEGORIES,
+  PROSPECT_STATUSES,
+  type DealStage,
+  type ExpenseCategory,
+  type ProspectStatus,
+  type Store,
+} from "./db.ts";
 import { normalizePhone, renderTemplate, truncate } from "./text.ts";
 import { daysBetween, formatLocal, localDay, parseLocal } from "./time.ts";
 import type { Transport } from "./transport/types.ts";
@@ -184,6 +192,21 @@ export const TOOLS: Anthropic.Beta.BetaToolUnion[] = [
         note: { type: "string" },
       },
       required: ["client_name", "amount", "kind"],
+    },
+  },
+  {
+    name: "record_expense",
+    description:
+      "Enregistre une sortie d'argent pour suivre la discipline financière. reinvestissement = ce qui fait grandir le business (outils, pub, matériel, transport pour prospecter, formation) ; charges = frais fixes (internet, abonnements, crédit téléphone pro) ; salaire = rémunération fixe qu'il se verse ; perso = argent du business dépensé pour lui hors salaire.",
+    input_schema: {
+      type: "object",
+      properties: {
+        amount: { type: "integer" },
+        category: { type: "string", enum: [...EXPENSE_CATEGORIES] },
+        spent_on: { type: "string", description: "AAAA-MM-JJ, aujourd'hui par défaut" },
+        note: { type: "string" },
+      },
+      required: ["amount", "category"],
     },
   },
   {
@@ -403,7 +426,11 @@ export async function runTool(name: string, input: Input, ctx: ToolContext): Pro
       );
       const noPhone = candidates.filter((p) => !p.phone).length;
       const inOtherCampaign = candidates.filter((p) => p.phone && busy.has(p.id)).length;
-      candidates = candidates.filter((p) => p.phone && !busy.has(p.id)).slice(0, max);
+      // Les premiers ajoutés sont contactés en premier.
+      candidates = candidates
+        .filter((p) => p.phone && !busy.has(p.id))
+        .sort((a, b) => a.id - b.id)
+        .slice(0, max);
       if (!candidates.length) {
         return {
           erreur: "Aucun prospect éligible avec ces critères",
@@ -570,6 +597,21 @@ export async function runTool(name: string, input: Input, ctx: ToolContext): Pro
       };
     }
 
+    case "record_expense": {
+      const spentOn = s(input.spent_on) ?? today;
+      if (!isDay(spentOn)) throw new Error("spent_on doit être au format AAAA-MM-JJ");
+      const amount = req(n(input.amount), "amount");
+      if (amount <= 0) throw new Error("Le montant doit être positif");
+      const category = s(input.category) as ExpenseCategory | undefined;
+      if (!category || !EXPENSE_CATEGORIES.includes(category)) throw new Error(`Catégorie inconnue : ${category}`);
+      const id = store.addExpense({ amount, category, spent_on: spentOn, note: s(input.note) });
+      const goal = store.activeGoal();
+      if (!goal) return { ok: true, expense_id: id };
+      const rev = store.revenueBetween(goal.start_day, goal.deadline).total;
+      const out = store.expensesBetween(goal.start_day, goal.deadline);
+      return { ok: true, expense_id: id, encaisse: rev, sorties: out, reserve: rev - out.total };
+    }
+
     case "log_activity": {
       const day = s(input.day) ?? today;
       if (!isDay(day)) throw new Error("day doit être au format AAAA-MM-JJ");
@@ -676,6 +718,7 @@ export function businessReport(store: Store, cfg: Config, now: Date, days: numbe
       depuis: d.created_at.slice(0, 10),
     })),
     derniers_encaissements: store.recentPayments(8),
+    sorties_periode: store.expensesBetween(sinceDay, today),
     campagnes: store.listCampaigns(5).map((c) => ({ id: c.id, nom: c.name, statut: c.status, stats: store.campaignStats(c.id) })),
   };
 }
