@@ -6,6 +6,7 @@ import makeWASocket, {
   DisconnectReason,
   downloadMediaMessage,
   fetchLatestBaileysVersion,
+  fetchLatestWaWebVersion,
   generateMessageIDV2,
   isJidBroadcast,
   isJidGroup,
@@ -97,9 +98,11 @@ Tu as quelques minutes. S'il expire, un NOUVEAU code s'affichera ici tout seul.
   private async connect(): Promise<void> {
     this.pairingRequested = false;
     const { state, saveCreds } = await this.loadAuth();
+    // Version actuelle de WhatsApp Web : une version périmée fait échouer la liaison de l'appareil.
     let version: [number, number, number] | undefined;
     try {
-      version = (await fetchLatestBaileysVersion()).version;
+      const web = await fetchLatestWaWebVersion();
+      version = web.isLatest ? web.version : (await fetchLatestBaileysVersion()).version;
     } catch {
       version = undefined; // version embarquée par défaut
     }
